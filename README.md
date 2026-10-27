@@ -16,27 +16,44 @@ reaches these models through the same client files (copied from `packages/muse-p
 | "Do you have this?" with a photo | the model sees the photo | **SAM 3.1 finds the object** (the shop's own kinds of things are the phrases), Muse Spark describes it as search words, the catalogue is searched, the reply names the match and its picture is sent; the record reads "(photo) …" |
 | A promo image for the owner (stretch) | none | `muse-image-1.0` |
 
+## How it works
+
+```mermaid
+flowchart LR
+  C["Customer on Messenger<br/>text, voice note, photo"] -->|webhook| A["Shop assistant<br/>(Oro, or demo/server.ts)"]
+  A -->|"voice note: MP4/AAC to 16 kHz WAV (ffmpeg)"| T["muse-voice-transcribe-1.0"]
+  T -->|"(voice note) the customer's words"| M
+  A -->|"photo + the shop's kinds of things"| S["SAM 3.1<br/>finds the item"]
+  S -->|"box"| D["Muse Spark 1.3<br/>describes the box as search words"]
+  D -->|"(photo) what it showed"| K["catalogue search"]
+  K -->|"the matching items"| M["Muse Spark 1.3<br/>answers from the shop's catalogue and rules"]
+  A -->|text| M
+  M -->|"reply + the named item's picture"| C
+```
+
+A voice note and a photo become words before the assistant answers. The record, the owner's inbox and the model therefore read the same sentence, marked "(voice note)" or "(photo)". A note or photo that cannot be read leaves the turn as it was, and the failure is recorded. The turn itself is never dropped. In Oro, a per-page switch decides which pages answer through Muse. Every other page is untouched.
+
 ## Packages
 
 - `demo` (`@oro-muse/demo`): a Messenger shop assistant a judge can run (see **Try it**), and the same assistant at a terminal. Text, voice notes and photos answered from `demo/shop.json` (eight items, public-domain photos). Everything Meta sits behind one `Deps` object, so the tests run without a network.
 - `packages/muse-provider` (`@oro-muse/provider`): a dependency-free client for the Meta Model API and Baseten.
   - `chat()`: Muse Spark 1.3 and Muse Spark Open. Both models **always reason** before answering (with `max_tokens=200` every token went to reasoning and `content` came back null), so the client gives the answer room and sets `reasoning_effort`. Meta's `tool_choice` takes `auto` only, so `required` becomes `auto` and `none` sends no tools.
-  - `transcribe()`: `POST /v1/asr/transcribe`, multipart `request` + `audio`. The endpoint takes mono 16-bit PCM WAV at 16 or 24 kHz only; `toPcmWav()` converts anything else with ffmpeg. A 5-second note came back in 1.3 s, every word right.
+  - `transcribe()`: `POST /v1/asr/transcribe`, multipart `request` + `audio`. The endpoint takes mono 16-bit PCM WAV at 16 or 24 kHz only, so `toPcmWav()` converts anything else with ffmpeg. A 5-second note came back in 1.3 s, every word right. The conversion goes through files, never pipes, for two measured reasons. First, an MP4 whose index comes after its audio cannot be read from a pipe once it outgrows ffmpeg's buffer: a 3-minute note gave an empty WAV. Second, a WAV written to a pipe has no sizes in its header.
   - `segment()`: SAM 3.1 through `POST /v1/responses`. The answer is special-token text (`<0f>0<|box;x1=…;c=…|><|mask;…|>`), parsed by key; the box in source pixels is what a shop needs. The phrase matters: "bracelet" missed an arm bracelet that "jewelry" found.
   - `photoMatch()`: SAM first, with the shop's phrases in turn (the largest box of the first phrase that finds something wins), then Muse Spark is asked to describe what is inside that box as one JSON object: category, colours, materials, features, style, keywords, summary. No cropping library: the box is told to the model in words. `photoFact()` is the one line a reply engine puts into the turn.
   - `generateImage()`: Muse Image. The bytes under `b64_json` are WebP.
 
 ## Bench: the same assistant, three models
 
-The reply engine of a jewellery shop's Messenger page on Oro (its rules and catalogue as they stood on 2026-10-27), eight scripted customers in English, Burmese and Thai (price by name, a category, an attribute, a budget, how to pay, a discount ask, an order, a greeting), one turn each. Checks: the right products, the catalogue price, the owner's payment facts, no discount granted, the customer's language.
+The bench used the reply engine of a jewellery shop's Messenger page on Oro, with its rules and catalogue as they stood on 2026-10-27. Eight scripted customers wrote in English, Burmese and Thai, one turn each. They asked for a price by name, a category, an attribute, a budget, how to pay, a discount and an order, and one sent a greeting. Each turn was checked for the right products, the catalogue price, the owner's payment facts, no discount granted, and the customer's language.
 
 | model | passed | median turn |
 |---|---|---|
-| Claude Haiku 5.5 (the shop's model today) | 24/24 | 2.6 s |
+| Claude Haiku 5.5 (the shop's model before) | 24/24 | 2.6 s |
 | **Muse Spark 1.3** (Meta Model API, `reasoning_effort: low`) | **24/24** | 3.7 s |
 | Muse Spark Open 1026 (Baseten, thinking off) | 3/24 | 6.4 s |
 
-Muse Spark Open kept calling the catalogue tool and never wrote the reply in 21 of 24 turns (and in 7 of 8 with its reasoning on), so the demo runs on Muse Spark 1.3. Of Muse Spark's 20k output tokens, 12k were reasoning.
+Muse Spark Open kept calling the catalogue tool and never wrote the reply in 21 of 24 turns. With its reasoning on, it failed 7 of 8. So the demo runs on Muse Spark 1.3. Of Muse Spark's 20k output tokens, 12k were reasoning. [`bench/README.md`](bench/README.md) has the per-language counts and token use. The transcripts are not published, because they carry the shop's own data.
 
 ## Meta tools used
 
@@ -81,14 +98,14 @@ PAGE_ACCESS_TOKEN=… VERIFY_TOKEN=any-word META_MODEL_API_KEY=… APP_SECRET=�
 ## Run the checks
 
 ```bash
-npm test                     # 34 unit tests, no network
+npm test                     # 36 unit tests, no network
 npm run typecheck
 META_MODEL_API_KEY=… BASETEN_API_KEY=… npx tsx scripts/live-check.ts path/to/16k-mono.wav   # the real endpoints, test data only
 ```
 
 ## Privacy
 
-While the Meta key runs on free credits, Meta may use the content for product improvement. Everything sent during the hackathon is demo and test data; no real customer conversation goes to these endpoints.
+While the Meta key runs on free credits, Meta may use the content for product improvement. So during the hackathon only demo and test data goes to these endpoints. In Oro, the switch is on for one demo page, which is messaged from test accounts.
 
 ## Licence
 
