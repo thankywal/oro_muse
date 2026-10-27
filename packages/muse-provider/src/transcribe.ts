@@ -75,7 +75,7 @@ export function toPcmWav(input: Uint8Array, opts: { ffmpeg?: string; sampleRate?
 export function transcribeForm(wav: Uint8Array, opts: TranscribeOptions = {}): FormData {
   const form = new FormData();
   form.append('request', new Blob([JSON.stringify({ model: opts.model ?? 'muse-voice-transcribe-1.0', audioEncoding: 'WAV', mode: opts.mode ?? 'PUSH_TO_TALK' })], { type: 'application/json' }));
-  form.append('audio', new Blob([wav as BlobPart], { type: 'audio/wav' }), 'note.wav');
+  form.append('audio', new Blob([Buffer.from(wav)], { type: 'audio/wav' }), 'note.wav');
   return form;
 }
 
