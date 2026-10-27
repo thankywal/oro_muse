@@ -1,0 +1,13 @@
+{
+  "name": "@oro-muse/demo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A Messenger shop assistant on Meta's Muse models that a judge can run: text, voice notes and photos answered from a small catalogue.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "start": "tsx server.ts",
+    "talk": "tsx talk.ts"
+  },
+  "engines": { "node": ">=20" }
+}

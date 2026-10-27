@@ -15,7 +15,9 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "vitest run",
-    "typecheck": "tsc -p packages/muse-provider --noEmit"
+    "typecheck": "tsc -p packages/muse-provider --noEmit && tsc -p demo --noEmit",
+    "demo": "tsx demo/server.ts",
+    "talk": "tsx demo/talk.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
