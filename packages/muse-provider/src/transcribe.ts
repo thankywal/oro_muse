@@ -12,6 +12,9 @@
  * machine. Nothing here depends on anything but Node.
  */
 import { spawn } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 export type TranscribeMode = 'PUSH_TO_TALK' | 'ENDPOINTING' | 'DIARIZATION';
 
@@ -58,17 +61,38 @@ export function wavFormat(bytes: Uint8Array): { ok: boolean; channels: number; s
   return { ok: false, channels: 0, sampleRate: 0, bitsPerSample: 0, reason: 'no fmt chunk' };
 }
 
-/** Any audio ffmpeg can read (Messenger's MP4/AAC, OGG, M4A, a 22 kHz WAV) → mono 16 kHz s16le WAV bytes. */
-export function toPcmWav(input: Uint8Array, opts: { ffmpeg?: string; sampleRate?: 16000 | 24000 } = {}): Promise<Uint8Array> {
+/**
+ * Any audio ffmpeg can read (Messenger's MP4/AAC, OGG, M4A, a 22 kHz WAV) → mono 16 kHz s16le WAV bytes.
+ * Both ends go through files in a fresh temporary folder, never pipes (measured 2026-10-27):
+ *   - an MP4 whose index (`moov`) comes after its audio cannot be read from a pipe once it outgrows
+ *     ffmpeg's buffer: a 3-minute note gave "partial file" and a WAV with no audio in it;
+ *   - a WAV written to a pipe cannot have its sizes filled in afterwards: RIFF and data said 0xFFFFFFFF,
+ *     with an encoder LIST chunk before the data. Written to a file, bit-exact and without metadata, it is
+ *     the plain 44-byte header the endpoint is known to take.
+ */
+export async function toPcmWav(input: Uint8Array, opts: { ffmpeg?: string; sampleRate?: 16000 | 24000; timeoutMs?: number } = {}): Promise<Uint8Array> {
   const rate = opts.sampleRate ?? 16000;
-  return new Promise((resolve, reject) => {
-    const p = spawn(opts.ffmpeg ?? 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-ac', '1', '-ar', String(rate), '-acodec', 'pcm_s16le', '-f', 'wav', 'pipe:1']);
-    const out: Buffer[] = []; const err: Buffer[] = [];
-    p.stdout.on('data', (b: Buffer) => out.push(b)); p.stderr.on('data', (b: Buffer) => err.push(b));
-    p.on('error', (e) => reject(new Error(`ffmpeg could not start: ${e.message}`)));
-    p.on('close', (code) => code === 0 ? resolve(new Uint8Array(Buffer.concat(out))) : reject(new Error(`ffmpeg exited ${code}: ${Buffer.concat(err).toString().slice(0, 300)}`)));
-    p.stdin.end(Buffer.from(input));
-  });
+  const dir = await mkdtemp(join(tmpdir(), 'muse-audio-'));
+  const src = join(dir, 'in'); const dst = join(dir, 'out.wav');
+  try {
+    await writeFile(src, input);
+    await new Promise<void>((resolve, reject) => {
+      const p = spawn(opts.ffmpeg ?? 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', src,
+        '-map_metadata', '-1', '-fflags', '+bitexact', '-flags:a', '+bitexact',
+        '-vn', '-ac', '1', '-ar', String(rate), '-acodec', 'pcm_s16le', '-f', 'wav', dst], { stdio: ['ignore', 'ignore', 'pipe'] });
+      const err: Buffer[] = [];
+      const timer = setTimeout(() => p.kill('SIGKILL'), opts.timeoutMs ?? 60_000);
+      p.stderr?.on('data', (b: Buffer) => err.push(b));
+      p.on('error', (e) => { clearTimeout(timer); reject(new Error(`ffmpeg could not start: ${e.message}`)); });
+      p.on('close', (code, signal) => {
+        clearTimeout(timer);
+        if (code === 0) resolve(); else reject(new Error(`ffmpeg exited ${code ?? signal}: ${Buffer.concat(err).toString().trim().slice(0, 300)}`));
+      });
+    });
+    return new Uint8Array(await readFile(dst));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 /** The multipart body, exported so a test can read it without a network. */
