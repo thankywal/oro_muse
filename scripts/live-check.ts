@@ -2,7 +2,7 @@
 // Keys come from the environment (META_MODEL_API_KEY, BASETEN_API_KEY); nothing is printed but results.
 //   META_MODEL_API_KEY=… BASETEN_API_KEY=… npx tsx scripts/live-check.ts [path/to/16k-mono.wav] [image-url]
 import { readFileSync } from 'node:fs';
-import { basetenEndpoint, chat, generateImage, largestMatch, metaEndpoint, segment, transcribe } from '../packages/muse-provider/src/index.js';
+import { basetenEndpoint, chat, generateImage, largestMatch, metaEndpoint, photoFact, photoMatch, segment, transcribe } from '../packages/muse-provider/src/index.js';
 
 const metaKey = process.env['META_MODEL_API_KEY'] ?? ''; const basetenKey = process.env['BASETEN_API_KEY'] ?? '';
 if (!metaKey || !basetenKey) throw new Error('set META_MODEL_API_KEY and BASETEN_API_KEY');
@@ -31,6 +31,12 @@ for (const phrase of ['ring', 'jewelry', 'bracelet']) {
   const s = await segment(metaKey, imageUrl, phrase);
   const best = largestMatch(s.matches);
   console.log(`\n== sam-3.1 "${phrase}": ${s.latencyMs} ms, ${s.matches.length} match(es)` + (best ? `, largest id ${best.id} box ${best.box.x1},${best.box.y1}-${best.box.x2},${best.box.y2} of ${best.box.frameWidth}x${best.box.frameHeight} c=${best.box.confidence?.toFixed(2)}` : ''));
+}
+
+{
+  const m = await photoMatch(metaKey, metaEndpoint(metaKey), imageUrl, { phrases: ['ring', 'necklace', 'bracelet', 'jewelry'] });
+  console.log(`\n== photo match: ${m.latencyMs} ms, SAM calls ${m.usage.samCalls}, phrase ${m.phrase}, box ${m.box ? `${m.box.x1},${m.box.y1}-${m.box.x2},${m.box.y2}` : 'none'}`);
+  console.log('   ', photoFact(m));
 }
 
 if (process.argv.includes('--image')) {
