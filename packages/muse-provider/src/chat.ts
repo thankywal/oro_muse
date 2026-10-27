@@ -26,11 +26,14 @@ export interface MuseEndpoint {
   model: string;
   /** The endpoint's own way to keep reasoning short (Baseten/vLLM). */
   thinkingToggle?: boolean;
+  /** The tool_choice values the endpoint accepts. Meta Model API, measured 2026-10-27: `auto` only
+   *  ("`none`, `required`, and named function choices are not currently supported", HTTP 400). */
+  toolChoices?: ReadonlyArray<'auto' | 'none' | 'required'>;
 }
 
 /** Meta Model API: `MODEL_API_KEY` from dev.meta.ai. */
 export function metaEndpoint(apiKey: string, model = 'muse-spark-1.3'): MuseEndpoint {
-  return { baseUrl: 'https://api.meta.ai/v1', apiKey, authScheme: 'Bearer', model };
+  return { baseUrl: 'https://api.meta.ai/v1', apiKey, authScheme: 'Bearer', model, toolChoices: ['auto'] };
 }
 
 /** Baseten's hosted Muse Spark Open. The hackathon credits cover `-1026` only. */
@@ -86,7 +89,17 @@ export function chatBody(endpoint: MuseEndpoint, messages: readonly ChatMessage[
   if (opts.temperature !== undefined) body['temperature'] = opts.temperature;
   if (opts.reasoningEffort) body['reasoning_effort'] = opts.reasoningEffort;
   if (opts.thinking === false && endpoint.thinkingToggle) body['chat_template_kwargs'] = { enable_thinking: false };
-  if (opts.tools?.length) { body['tools'] = opts.tools; if (opts.toolChoice) body['tool_choice'] = opts.toolChoice; }
+  if (opts.tools?.length) {
+    // A choice the endpoint cannot take is given in the nearest way it can: `none` is the same as sending no
+    // tools; `required` becomes `auto`, and the caller reads the answer as it always does (a tool call or words).
+    const choice = opts.toolChoice;
+    const accepted = !choice || !endpoint.toolChoices || endpoint.toolChoices.includes(choice);
+    if (choice === 'none' && !accepted) { /* no tools at all */ }
+    else {
+      body['tools'] = opts.tools;
+      if (choice) body['tool_choice'] = accepted ? choice : 'auto';
+    }
+  }
   if (opts.responseFormat) body['response_format'] = opts.responseFormat;
   return body;
 }

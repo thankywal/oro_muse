@@ -14,6 +14,15 @@ describe('the request body', () => {
     expect(chatBody(meta, ask, { thinking: false })).not.toHaveProperty('chat_template_kwargs');
     expect(chatBody(baseten, ask, { thinking: false })).toMatchObject({ chat_template_kwargs: { enable_thinking: false } });
   });
+  it('a tool choice the endpoint cannot take is given in the nearest way it can', () => {
+    const tools = [{ type: 'function' as const, function: { name: 'search_catalog', parameters: { type: 'object' } } }];
+    // Meta takes `auto` only (HTTP 400 on `required` and `none`, measured 2026-10-27).
+    expect(chatBody(meta, ask, { tools, toolChoice: 'required' })).toMatchObject({ tools, tool_choice: 'auto' });
+    expect(chatBody(meta, ask, { tools, toolChoice: 'none' })).not.toHaveProperty('tools');
+    expect(chatBody(meta, ask, { tools, toolChoice: 'auto' })).toMatchObject({ tool_choice: 'auto' });
+    // Baseten states no restriction, so the choice goes through as asked.
+    expect(chatBody(baseten, ask, { tools, toolChoice: 'required' })).toMatchObject({ tool_choice: 'required' });
+  });
   it('carries tools and a response format', () => {
     const tools = [{ type: 'function' as const, function: { name: 'search_catalog', parameters: { type: 'object' } } }];
     expect(chatBody(meta, ask, { tools, toolChoice: 'auto', responseFormat: { type: 'json_object' } }))
