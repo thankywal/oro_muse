@@ -13,15 +13,17 @@ reaches these models through the same client files (copied from `packages/muse-p
 |---|---|---|
 | The assistant's model | Claude Haiku 5.5 | **Muse Spark 1.3** (Meta Model API) or **Muse Spark Open** (Baseten), behind a per-page switch |
 | A customer's voice note | dropped: the assistant never heard it | **transcribed by `muse-voice-transcribe-1.0`** and answered, marked "(voice note)" in the record |
-| "Do you have this?" with a photo | the model sees the photo | **SAM 3.1 finds the object**, Muse Spark describes it, the catalogue is searched, matching product pictures are sent |
+| "Do you have this?" with a photo | the model sees the photo | **SAM 3.1 finds the object** (the shop's own kinds of things are the phrases), Muse Spark describes it as search words, the catalogue is searched, the reply names the match and its picture is sent; the record reads "(photo) …" |
 | A promo image for the owner (stretch) | none | `muse-image-1.0` |
 
 ## Packages
 
+- `demo` (`@oro-muse/demo`): a Messenger shop assistant a judge can run (see **Try it**), and the same assistant at a terminal. Text, voice notes and photos answered from `demo/shop.json` (eight items, public-domain photos). Everything Meta sits behind one `Deps` object, so the tests run without a network.
 - `packages/muse-provider` (`@oro-muse/provider`): a dependency-free client for the Meta Model API and Baseten.
   - `chat()`: Muse Spark 1.3 and Muse Spark Open. Both models **always reason** before answering (with `max_tokens=200` every token went to reasoning and `content` came back null), so the client gives the answer room and sets `reasoning_effort`. Meta's `tool_choice` takes `auto` only, so `required` becomes `auto` and `none` sends no tools.
   - `transcribe()`: `POST /v1/asr/transcribe`, multipart `request` + `audio`. The endpoint takes mono 16-bit PCM WAV at 16 or 24 kHz only; `toPcmWav()` converts anything else with ffmpeg. A 5-second note came back in 1.3 s, every word right.
   - `segment()`: SAM 3.1 through `POST /v1/responses`. The answer is special-token text (`<0f>0<|box;x1=…;c=…|><|mask;…|>`), parsed by key; the box in source pixels is what a shop needs. The phrase matters: "bracelet" missed an arm bracelet that "jewelry" found.
+  - `photoMatch()`: SAM first, with the shop's phrases in turn (the largest box of the first phrase that finds something wins), then Muse Spark is asked to describe what is inside that box as one JSON object: category, colours, materials, features, style, keywords, summary. No cropping library: the box is told to the model in words. `photoFact()` is the one line a reply engine puts into the turn.
   - `generateImage()`: Muse Image. The bytes under `b64_json` are WebP.
 
 ## Bench: the same assistant, three models
@@ -43,11 +45,43 @@ Muse Spark Open kept calling the catalogue tool and never wrote the reply in 21 
 - `sam-3.1`: finding the product in a customer's photo.
 - `muse-image-1.0`: promo images (stretch).
 
-## Run the checks
+## Try it
+
+At a terminal, no Messenger needed (ffmpeg on PATH if you give it an MP4/M4A voice note; a 16 kHz mono WAV needs nothing):
 
 ```bash
 npm install
-npm test                     # 18 unit tests, no network
+META_MODEL_API_KEY=… npm run talk
+you> How much is the locket, and can you deliver to Sukhumvit tomorrow?
+shop> The Oval Silver Locket is 95 USD. Yes, we can deliver to Sukhumvit tomorrow by courier for 3 USD.   (1332 ms)
+you> voice customer.wav
+  heard: Hi. Do you still have the ruby hand chain? How much is it? And can you deliver to Sukhumvit tomorrow
+shop> We don't have the ruby hand chain, sorry! The nearest is our Ruby Dome Ring for 320 USD. …   (3735 ms)
+you> photo https://…/gold_ring_with_large_ruby.jpg
+  shown: Thin gold solitaire ring with a round bezel-set red gemstone. (found as "ring"). Search words: bezel, solitaire, red, gemstone, …
+  matches: Solitaire Diamond Ring; Ruby Dome Ring; Sapphire Halo Ring
+shop> Yes, we have it! That's our Ruby Dome Ring for 320 USD.
+  [sends picture: Ruby Dome Ring]   (5387 ms)
+you> มีแหวนทับทิมไหมคะ ราคาเท่าไหร่
+shop> มีค่ะ Ruby Dome Ring ราคา 320 USD ค่ะ เป็นแหวนทอง 18K ประดับทับทิมเม็ดใหญ่ค่ะ   (1394 ms)
+```
+
+(Measured 2026-10-27 on the Meta Model API; the picture sent is of the item the reply names, not merely the best-scored match.)
+
+As a Messenger bot: a Facebook Page, a Meta app with Messenger added, and a public URL for the webhook (ngrok or cloudflared).
+
+```bash
+PAGE_ACCESS_TOKEN=… VERIFY_TOKEN=any-word META_MODEL_API_KEY=… APP_SECRET=… npm run demo   # :3000
+# Meta app → Messenger → Webhooks: callback https://<your-host>/webhook, verify token = VERIFY_TOKEN, field `messages`;
+# subscribe the Page. Then message the Page: text, a voice note, or a photo.
+```
+
+`APP_SECRET` is optional; set, every POST must carry Meta's `X-Hub-Signature-256`. The webhook answers 200 at once and sends the replies after, as Messenger wants. Nothing is stored: the last few turns of each customer live in memory.
+
+## Run the checks
+
+```bash
+npm test                     # 34 unit tests, no network
 npm run typecheck
 META_MODEL_API_KEY=… BASETEN_API_KEY=… npx tsx scripts/live-check.ts path/to/16k-mono.wav   # the real endpoints, test data only
 ```
