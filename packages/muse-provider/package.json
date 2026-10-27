@@ -1,0 +1,12 @@
+{
+  "name": "@oro-muse/provider",
+  "version": "0.1.0",
+  "description": "A small, dependency-free client for Meta's Muse models: chat (Muse Spark, Muse Spark Open on Baseten), voice transcription, image generation and SAM segmentation.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "src", "README.md"],
+  "scripts": { "build": "tsc -p ." },
+  "engines": { "node": ">=20" }
+}

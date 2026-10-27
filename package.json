@@ -1,0 +1,20 @@
+{
+  "name": "oro-muse",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Oro on Muse: a Messenger shop assistant that answers customers with Meta's Muse models. Meta Global AI Developer Hackathon 2026.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": ["packages/*", "demo"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run",
+    "typecheck": "tsc -p packages/muse-provider --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
+  }
+}
