@@ -14,7 +14,6 @@ reaches these models through the same client files (copied from `packages/muse-p
 | The assistant's model | Claude Haiku 5.5 | **Muse Spark 1.3** (Meta Model API) or **Muse Spark Open** (Baseten), behind a per-page switch |
 | A customer's voice note | dropped: the assistant never heard it | **transcribed by `muse-voice-transcribe-1.0`** and answered, marked "(voice note)" in the record |
 | "Do you have this?" with a photo | the model sees the photo | **SAM 3.1 finds the object** (the shop's own kinds of things are the phrases), Muse Spark describes it as search words, the catalogue is searched, the reply names the match and its picture is sent; the record reads "(photo) …" |
-| A promo image for the owner (stretch) | none | `muse-image-1.0` |
 
 ## How it works
 
@@ -60,7 +59,7 @@ Muse Spark Open kept calling the catalogue tool and never wrote the reply in 21 
 - `muse-spark-1.3` (Meta Model API) and `meta-models/muse-spark-open-1026` (Baseten): the assistant's answers, with tool calling.
 - `muse-voice-transcribe-1.0`: customers' voice notes (25 languages; no Burmese, so the voice demo is in English and Thai).
 - `sam-3.1`: finding the product in a customer's photo.
-- `muse-image-1.0`: promo images (stretch).
+- `muse-image-1.0`: `generateImage()` in the client, checked live. The assistant does not use it: a generated picture of a product must not pass for the shop's real item.
 
 ## Try it
 
