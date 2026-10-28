@@ -40,4 +40,9 @@ describe('finding then describing', () => {
     expect(m.box).toBeNull();
     expect(photoFact(m)).toBe('handbag, black, leather. Search words: black leather handbag');
   });
+  it('a summary that ends its own sentence is not given a second full stop', () => {
+    const m = { box: null, phrase: null, usage: { samCalls: 9, chatTokensIn: 1, chatTokensOut: 1 }, latencyMs: 1,
+      description: readDescription('{"category":"icon","keywords":["thumbs-up","like"],"summary":"A yellow cartoon thumbs-up hand."}') };
+    expect(photoFact(m)).toBe('A yellow cartoon thumbs-up hand. Search words: thumbs-up, like');
+  });
 });

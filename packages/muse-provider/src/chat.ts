@@ -79,6 +79,19 @@ export class MuseError extends Error {
   constructor(message: string, readonly status: number, readonly body: string) { super(message); this.name = 'MuseError'; }
 }
 
+/**
+ * What a refusal says about itself, for the error's message: the error's code (Meta's `media_url_not_fetchable`)
+ * and the start of its words. A status alone ("answered 400") does not say which of a request's parts was refused.
+ */
+export function refusalReason(raw: string): string {
+  try {
+    const e = (JSON.parse(raw) as { error?: { code?: unknown; message?: unknown } } | null)?.error;
+    const code = typeof e?.code === 'string' || typeof e?.code === 'number' ? String(e.code) : '';
+    const words = typeof e?.message === 'string' ? e.message.trim().slice(0, 120) : '';
+    return [code, words].filter(Boolean).join(': ');
+  } catch { return ''; }
+}
+
 /** The request body, exported so a test or a record can read it without a network. */
 export function chatBody(endpoint: MuseEndpoint, messages: readonly ChatMessage[], opts: ChatOptions = {}): Record<string, unknown> {
   const body: Record<string, unknown> = {
@@ -118,7 +131,7 @@ export async function chat(endpoint: MuseEndpoint, messages: readonly ChatMessag
     signal: opts.signal ?? AbortSignal.timeout(opts.timeoutMs ?? 60_000),
   });
   const raw = await res.text();
-  if (!res.ok) throw new MuseError(`${endpoint.baseUrl} answered ${res.status}`, res.status, raw.slice(0, 2000));
+  if (!res.ok) throw new MuseError([`${endpoint.baseUrl} answered ${res.status}`, refusalReason(raw)].filter(Boolean).join(' '), res.status, raw.slice(0, 2000));
   return readChat(raw, Date.now() - t0);
 }
 

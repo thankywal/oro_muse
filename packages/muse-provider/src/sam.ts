@@ -15,6 +15,8 @@
  * mask token is kept raw; `@meta-sam/parser` decodes it when a mask is needed.
  */
 
+import { refusalReason } from './chat.js';
+
 export interface SamBox { x1: number; y1: number; x2: number; y2: number; frameWidth: number; frameHeight: number; confidence: number | null }
 export interface SamMatch { id: number; box: SamBox; mask: string | null }
 export interface SamResult { matches: SamMatch[]; text: string; imagesProcessed: number; latencyMs: number }
@@ -79,6 +81,6 @@ export async function segment(apiKey: string, imageUrl: string, phrase: string, 
   const res = await fetch(META_RESPONSES, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(samBody(imageUrl, phrase, opts)), signal: AbortSignal.timeout(opts.timeoutMs ?? 60_000) });
   const raw = await res.text();
-  if (!res.ok) throw new SamError(`responses answered ${res.status}`, res.status, raw.slice(0, 2000));
+  if (!res.ok) throw new SamError([`responses answered ${res.status}`, refusalReason(raw)].filter(Boolean).join(' '), res.status, raw.slice(0, 2000));
   return readSam(raw, Date.now() - t0);
 }

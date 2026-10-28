@@ -9,9 +9,26 @@
  *      catalogue can be searched with: category, colours, materials, stones, style, keywords.
  * No cropping library: the box is told to the model in words, and it answers about that region.
  * The catalogue search itself belongs to the host (a shop's own index); this returns the words.
+ *
+ * A Messenger photo is given as its bytes (`imageDataUri`): Meta cannot fetch a Facebook CDN link.
  */
 import { chat, type ChatOptions, type MuseEndpoint } from './chat.js';
 import { largestMatch, segment, type SamBox, type SamMatch } from './sam.js';
+
+/**
+ * A picture as Meta's door takes it. The Meta Model API fetches an https picture itself, but not from every
+ * host: a Facebook CDN link, where Messenger keeps a customer's photo, is answered 400 `media_url_not_fetchable`
+ * by chat and SAM alike, while the same picture's bytes are taken (measured 2026-10-28, 6 KB to 6.5 MB). So the
+ * picture is fetched here and given as a data URI, typed by the server that sent it. A data URI is kept as it is.
+ */
+export async function imageDataUri(url: string, opts: { fetchFn?: typeof fetch; timeoutMs?: number } = {}): Promise<string> {
+  if (/^data:/i.test(url)) return url;
+  const res = await (opts.fetchFn ?? fetch)(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000) });
+  if (!res.ok) throw new Error(`picture fetch ${res.status}`);
+  const type = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+  if (!type.startsWith('image/')) throw new Error(`picture fetch: ${type || 'no type'}, not a picture`);
+  return `data:${type};base64,${Buffer.from(await res.arrayBuffer()).toString('base64')}`;
+}
 
 export interface ProductDescription {
   /** What kind of thing: "ring", "hand chain", "earrings", "handbag", … */
@@ -82,7 +99,10 @@ export interface PhotoMatchOptions {
 
 export const DEFAULT_PHRASES = ['jewelry', 'bag', 'shoes', 'clothing', 'watch', 'product'];
 
-/** Find the thing, then describe it. The first phrase that finds something decides the box. */
+/**
+ * Find the thing, then describe it. The first phrase that finds something decides the box. `imageUrl` is a link
+ * Meta can fetch or a data URI; a Messenger photo goes as its bytes (`imageDataUri`), fetched once for every call.
+ */
 export async function photoMatch(metaKey: string, endpoint: MuseEndpoint, imageUrl: string, opts: PhotoMatchOptions = {}): Promise<PhotoMatch> {
   const t0 = Date.now();
   const seg = opts.segmentFn ?? segment; const describe = opts.describeFn ?? describeProduct;
@@ -102,6 +122,9 @@ export async function photoMatch(metaKey: string, endpoint: MuseEndpoint, imageU
 export function photoFact(m: PhotoMatch): string {
   const d = m.description;
   const bits = [d.category, ...d.colors.slice(0, 2), ...d.materials.slice(0, 2), ...d.features.slice(0, 3)].filter(Boolean);
+  const said = d.summary || bits.join(', ');
   const where = m.box ? ` (found as "${m.phrase}")` : '';
-  return `${d.summary || bits.join(', ')}${where}. Search words: ${d.keywords.join(', ') || bits.join(', ')}`;
+  // a summary that ends its own sentence is not given a second full stop
+  const stop = where || !/[.!?]$/.test(said) ? '.' : '';
+  return `${said}${where}${stop} Search words: ${d.keywords.join(', ') || bits.join(', ')}`;
 }

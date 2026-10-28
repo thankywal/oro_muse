@@ -6,7 +6,7 @@
  *   - Muse Spark 1.3 answers with the shop's catalogue and rules, in the customer's language.
  * The Meta calls sit behind `Deps`, so the tests run without a network and the CLI runs without Messenger.
  */
-import { chat, metaEndpoint, photoFact, photoMatch, toPcmWav, transcribe, wavFormat, type ChatMessage, type PhotoMatch } from '../../packages/muse-provider/src/index.js';
+import { chat, imageDataUri, metaEndpoint, photoFact, photoMatch, toPcmWav, transcribe, wavFormat, type ChatMessage, type PhotoMatch } from '../../packages/muse-provider/src/index.js';
 import { catalogueLines, phrasesOf, searchCatalogue, type Item } from './catalogue.js';
 
 export interface Shop { name: string; currency: string; delivery: string; payment: string }
@@ -89,6 +89,7 @@ export function museDeps(metaKey: string): Deps {
       const wav = wavFormat(bytes).ok ? bytes : await toPcmWav(bytes);
       return (await transcribe(metaKey, wav, { mode: 'ENDPOINTING' })).transcript;
     },
-    photo: (url, phrases) => photoMatch(metaKey, endpoint, url, { phrases }),
+    // Messenger's photo is a Facebook CDN link, which Meta cannot fetch: SAM and Muse Spark are given its bytes.
+    photo: async (url, phrases) => photoMatch(metaKey, endpoint, await imageDataUri(url), { phrases }),
   };
 }
