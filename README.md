@@ -32,7 +32,7 @@ flowchart LR
   M -->|"reply + the named item's picture"| C
 ```
 
-A voice note and a photo become words before the assistant answers. A photo is also put beside the shop's own product photos, because a catalogue's words rarely say what a piece looks like: "Diamond Ring" does not tell one ring from another, a picture does. The record, the owner's inbox and the model therefore read the same sentence, marked "(voice note)" or "(photo)". A note or photo that cannot be read leaves the turn as it was, and the failure is recorded. The turn itself is never dropped. In Oro, an owner picks "Oro Muse" for an agent in its Model box, and one switch can withdraw the tier in seconds. Agents on other tiers are untouched, and a Meta failure never leaves a customer without a reply.
+A voice note and a photo become words before the assistant answers, so the conversation record and the model read the same sentence, marked "(voice note)" or "(photo)". A photo is also put beside the shop's own product photos, because a catalogue's words rarely say what a piece looks like: "Diamond Ring" does not tell one ring from another, a picture does. A note or photo that cannot be read leaves the turn as it was, and the failure is recorded. The turn itself is never dropped. In Oro, an owner picks "Oro Muse" for an agent in its Model box, and one switch can withdraw the tier in seconds. Agents on other tiers are untouched, and a Meta failure never leaves a customer without a reply.
 
 ## Packages
 
@@ -108,7 +108,7 @@ META_MODEL_API_KEY=… BASETEN_API_KEY=… npx tsx scripts/live-check.ts path/to
 
 ## Privacy
 
-While the Meta key runs on free credits, Meta may use the content for product improvement. The demo sends only its own test data. In Oro, an owner chooses Oro Muse for an agent; as of 2026-10-28, the only page it has answered is our demo page, messaged from test accounts.
+While the Meta key runs on free credits, Meta may use the content for product improvement. The demo sends only its own test data. In Oro, an owner chooses Oro Muse for an agent; as of 2026-11-03, the only page it has answered is our demo page, messaged from test accounts.
 
 ## Licence
 
