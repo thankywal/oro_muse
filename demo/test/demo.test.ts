@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createHmac } from 'node:crypto';
 import { phrasesOf, searchCatalogue, tokens, type Item } from '../src/catalogue.js';
 import { answer, FALLBACK, Memory, PHOTO_MARK, systemPrompt, VOICE_MARK, type Deps, type Shop } from '../src/assistant.js';
-import { signed, turnsOf, verifyChallenge } from '../src/messenger.js';
+import { fromMeta, signed, turnsOf, verifyChallenge } from '../src/messenger.js';
 import type { PhotoMatch } from '../../packages/muse-provider/src/index.js';
 
 const { shop, items } = JSON.parse(readFileSync(new URL('../shop.json', import.meta.url), 'utf8')) as { shop: Shop; items: Item[] };
@@ -39,16 +39,24 @@ describe('Messenger', () => {
   it('events become turns: text, voice, photo; echoes and other objects are skipped', () => {
     const body = { object: 'page', entry: [{ messaging: [
       { sender: { id: '1' }, message: { mid: 'a', text: 'hi' } },
-      { sender: { id: '2' }, message: { mid: 'b', attachments: [{ type: 'audio', payload: { url: 'https://cdn/x.mp4' } }, { type: 'image', payload: { url: 'https://cdn/p.jpg' } }] } },
+      { sender: { id: '2' }, message: { mid: 'b', attachments: [{ type: 'audio', payload: { url: 'https://cdn.fbsbx.com/v/x.mp4' } }, { type: 'image', payload: { url: 'https://scontent.xx.fbcdn.net/v/p.jpg' } }] } },
       { sender: { id: '3' }, message: { mid: 'c', text: 'echo', is_echo: true } },
       { sender: { id: '4' }, delivery: {} },
     ] }] };
     expect(turnsOf(body)).toEqual([
       { senderId: '1', text: 'hi', audioUrl: null, imageUrl: null },
-      { senderId: '2', text: null, audioUrl: 'https://cdn/x.mp4', imageUrl: 'https://cdn/p.jpg' },
+      { senderId: '2', text: null, audioUrl: 'https://cdn.fbsbx.com/v/x.mp4', imageUrl: 'https://scontent.xx.fbcdn.net/v/p.jpg' },
     ]);
     expect(turnsOf({ object: 'instagram', entry: [] })).toEqual([]);
     expect(turnsOf(null)).toEqual([]);
+  });
+  it('an attachment is fetched only from Meta\'s own hosts: a forged event naming another address becomes no turn', () => {
+    for (const url of ['https://scontent-bkk1-1.xx.fbcdn.net/v/t1.15752-9/p.jpg?oh=x', 'https://cdn.fbsbx.com/v/n.mp4', 'https://lookaside.fbsbx.com/x', 'https://www.facebook.com/x']) expect(fromMeta(url)).toBe(true);
+    for (const url of ['http://scontent.xx.fbcdn.net/p.jpg', 'https://127.0.0.1/internal.jpg', 'https://169.254.169.254/latest/meta-data', 'https://evil.example/fbcdn.net/p.jpg', 'https://fbcdn.net.evil.example/p.jpg', 'not a url', '']) expect(fromMeta(url)).toBe(false);
+    const forged = { object: 'page', entry: [{ messaging: [{ sender: { id: '9' }, message: { mid: 'z', attachments: [{ type: 'image', payload: { url: 'https://127.0.0.1/internal.jpg' } }] } }] }] };
+    expect(turnsOf(forged)).toEqual([]);
+    const mixed = { object: 'page', entry: [{ messaging: [{ sender: { id: '9' }, message: { mid: 'z', text: 'look', attachments: [{ type: 'image', payload: { url: 'https://evil.example/p.jpg' } }] } }] }] };
+    expect(turnsOf(mixed)).toEqual([{ senderId: '9', text: 'look', audioUrl: null, imageUrl: null }]);
   });
 });
 

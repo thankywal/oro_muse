@@ -36,7 +36,7 @@ A voice note and a photo become words before the assistant answers, so the conve
 
 ## Packages
 
-- `demo` (`@oro-muse/demo`): a Messenger shop assistant a judge can run (see **Try it**), and the same assistant at a terminal. Text, voice notes and photos answered from `demo/shop.json` (eight items, public-domain photos). Everything Meta sits behind one `Deps` object, so the tests run without a network.
+- `demo` (`@oro-muse/demo`): a Messenger shop assistant a judge can run (see **Try it**), and the same assistant at a terminal. Text, voice notes and photos answered from `demo/shop.json` (eight items; the photos are from Wikimedia Commons, credited in [`demo/CREDITS.md`](demo/CREDITS.md)). Everything Meta sits behind one `Deps` object, so the tests run without a network.
 - `packages/muse-provider` (`@oro-muse/provider`): a dependency-free client for the Meta Model API and Baseten.
   - `chat()`: Muse Spark 1.3 and Muse Spark Open. Both models **always reason** before answering (with `max_tokens=200` every token went to reasoning and `content` came back null), so the client gives the answer room and sets `reasoning_effort`. Meta's `tool_choice` takes `auto` only, so `required` becomes `auto` and `none` sends no tools.
   - `transcribe()`: `POST /v1/asr/transcribe`, multipart `request` + `audio`. The endpoint takes mono 16-bit PCM WAV at 16 or 24 kHz only, so `toPcmWav()` converts anything else with ffmpeg. A 5-second note came back in 1.3 s, every word right. The conversion goes through files, never pipes, for two measured reasons. First, an MP4 whose index comes after its audio cannot be read from a pipe once it outgrows ffmpeg's buffer: a 3-minute note gave an empty WAV. Second, a WAV written to a pipe has no sizes in its header.
@@ -96,12 +96,12 @@ PAGE_ACCESS_TOKEN=… VERIFY_TOKEN=any-word META_MODEL_API_KEY=… APP_SECRET=�
 # subscribe the Page. Then message the Page: text, a voice note, or a photo.
 ```
 
-`APP_SECRET` is optional; set, every POST must carry Meta's `X-Hub-Signature-256`. The webhook answers 200 at once and sends the replies after, as Messenger wants. Nothing is stored: the last few turns of each customer live in memory.
+`APP_SECRET` is the Meta app's secret, and it is required: every POST must carry Meta's `X-Hub-Signature-256`, and an attachment is fetched only from Meta's own hosts, so a forged event cannot make the demo fetch an arbitrary address. The webhook answers 200 at once and sends the replies after, as Messenger wants. Nothing is stored: the last few turns of each customer live in memory.
 
 ## Run the checks
 
 ```bash
-npm test                     # 50 unit tests, no network
+npm test                     # 51 unit tests, no network
 npm run typecheck
 META_MODEL_API_KEY=… BASETEN_API_KEY=… npx tsx scripts/live-check.ts path/to/16k-mono.wav   # the real endpoints, test data only
 ```

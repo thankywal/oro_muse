@@ -13,9 +13,18 @@ export function signed(rawBody: Uint8Array, header: string | undefined, appSecre
   return given.length === want.length && timingSafeEqual(Buffer.from(given, 'utf8'), Buffer.from(want, 'utf8'));
 }
 
+/**
+ * Only Meta's own hosts. A webhook event names where an attachment is; a forged event must not make the demo fetch an
+ * arbitrary address (a private service, a cloud metadata endpoint) and send what it finds to Meta.
+ */
+const META_HOSTS = /(^|\.)(fbcdn\.net|fbsbx\.com|facebook\.com|messenger\.com)$/i;
+export function fromMeta(url: string): boolean {
+  try { const u = new URL(url); return u.protocol === 'https:' && META_HOSTS.test(u.hostname); } catch { return false; }
+}
+
 interface Event { sender?: { id?: string }; message?: { mid?: string; text?: string; is_echo?: boolean; attachments?: Array<{ type?: string; payload?: { url?: string } }> } }
 
-/** One turn per customer message: text, the first audio attachment, the first image attachment. Echoes are skipped. */
+/** One turn per customer message: text, the first audio attachment, the first image attachment. Echoes are skipped, and so is an attachment that is not on Meta's hosts. */
 export function turnsOf(body: unknown): Turn[] {
   const out: Turn[] = [];
   const b = body as { object?: string; entry?: Array<{ messaging?: Event[] }> } | null;
@@ -26,7 +35,7 @@ export function turnsOf(body: unknown): Turn[] {
       if (!msg || !psid || msg.is_echo) continue;
       const turn: Turn = { senderId: String(psid), text: msg.text ?? null, audioUrl: null, imageUrl: null };
       for (const a of msg.attachments ?? []) {
-        const url = a.payload?.url; if (!url) continue;
+        const url = a.payload?.url; if (!url || !fromMeta(url)) continue;
         if (a.type === 'audio' && !turn.audioUrl) turn.audioUrl = url;
         if (a.type === 'image' && !turn.imageUrl) turn.imageUrl = url;
       }
@@ -38,7 +47,8 @@ export function turnsOf(body: unknown): Turn[] {
 
 const GRAPH = 'https://graph.facebook.com/v21.0/me/messages';
 async function send(pageToken: string, body: unknown): Promise<void> {
-  const r = await fetch(`${GRAPH}?access_token=${encodeURIComponent(pageToken)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  // the token travels in a header, never in the URL, where proxies and logs would keep it
+  const r = await fetch(GRAPH, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${pageToken}` }, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`Send API ${r.status}: ${(await r.text()).slice(0, 300)}`);
 }
 export const sendText = (pageToken: string, psid: string, text: string): Promise<void> =>

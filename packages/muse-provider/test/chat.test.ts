@@ -15,7 +15,7 @@ describe('the request body', () => {
     expect(chatBody(baseten, ask, { thinking: false })).toMatchObject({ chat_template_kwargs: { enable_thinking: false } });
   });
   it('a tool choice the endpoint cannot take is given in the nearest way it can', () => {
-    const tools = [{ type: 'function' as const, function: { name: 'search_catalog', parameters: { type: 'object' } } }];
+    const tools = [{ type: 'function' as const, function: { name: 'find_item', parameters: { type: 'object' } } }];
     // Meta takes `auto` only (HTTP 400 on `required` and `none`, measured 2026-10-27).
     expect(chatBody(meta, ask, { tools, toolChoice: 'required' })).toMatchObject({ tools, tool_choice: 'auto' });
     expect(chatBody(meta, ask, { tools, toolChoice: 'none' })).not.toHaveProperty('tools');
@@ -24,7 +24,7 @@ describe('the request body', () => {
     expect(chatBody(baseten, ask, { tools, toolChoice: 'required' })).toMatchObject({ tool_choice: 'required' });
   });
   it('carries tools and a response format', () => {
-    const tools = [{ type: 'function' as const, function: { name: 'search_catalog', parameters: { type: 'object' } } }];
+    const tools = [{ type: 'function' as const, function: { name: 'find_item', parameters: { type: 'object' } } }];
     expect(chatBody(meta, ask, { tools, toolChoice: 'auto', responseFormat: { type: 'json_object' } }))
       .toMatchObject({ tools, tool_choice: 'auto', response_format: { type: 'json_object' } });
   });
@@ -46,9 +46,9 @@ describe('reading an answer', () => {
   });
   it('tool calls are parsed, and unparseable arguments are kept raw', () => {
     const r = readChat(JSON.stringify({ choices: [{ message: { content: '', tool_calls: [
-      { id: 'c1', function: { name: 'search_catalog', arguments: '{"query":"ruby"}' } },
-      { id: 'c2', function: { name: 'search_catalog', arguments: 'not json' } } ] } }] }));
-    expect(r.toolCalls).toEqual([{ id: 'c1', name: 'search_catalog', arguments: { query: 'ruby' } }, { id: 'c2', name: 'search_catalog', arguments: { _raw: 'not json' } }]);
+      { id: 'c1', function: { name: 'find_item', arguments: '{"query":"ruby"}' } },
+      { id: 'c2', function: { name: 'find_item', arguments: 'not json' } } ] } }] }));
+    expect(r.toolCalls).toEqual([{ id: 'c1', name: 'find_item', arguments: { query: 'ruby' } }, { id: 'c2', name: 'find_item', arguments: { _raw: 'not json' } }]);
   });
 });
 
