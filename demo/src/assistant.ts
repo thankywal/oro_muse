@@ -3,10 +3,12 @@
  *   - a voice note is transcribed by muse-voice-transcribe-1.0 and marked "(voice note)";
  *   - a photo goes to SAM 3.1 (the shop's kinds of things are the phrases) and Muse Spark describes the
  *     box as search words; the catalogue is searched with them, and the matches ride in the message;
+ *   - the photo is also put beside the shop's own product photos (`pictureMatch`), and the piece Muse Spark
+ *     says is the same one is named first: a catalogue's words rarely say what a piece looks like;
  *   - Muse Spark 1.3 answers with the shop's catalogue and rules, in the customer's language.
  * The Meta calls sit behind `Deps`, so the tests run without a network and the CLI runs without Messenger.
  */
-import { chat, imageDataUri, metaEndpoint, photoFact, photoMatch, toPcmWav, transcribe, wavFormat, type ChatMessage, type PhotoMatch } from '../../packages/muse-provider/src/index.js';
+import { chat, imageDataUri, metaEndpoint, photoFact, photoMatch, pictureMatch, toPcmWav, transcribe, wavFormat, type ChatMessage, type PhotoMatch } from '../../packages/muse-provider/src/index.js';
 import { catalogueLines, phrasesOf, searchCatalogue, type Item } from './catalogue.js';
 
 export interface Shop { name: string; currency: string; delivery: string; payment: string }
@@ -17,6 +19,8 @@ export interface Deps {
   fetchBytes(url: string): Promise<Uint8Array>;
   transcribe(audio: Uint8Array): Promise<string>;
   photo(imageUrl: string, phrases: string[]): Promise<PhotoMatch>;
+  /** The customer's photo beside the shop's product photos: the ids of the items that are the same piece. */
+  compare?(imageUrl: string, items: Item[]): Promise<{ same: string[] }>;
 }
 
 export const VOICE_MARK = '(voice note)';
@@ -31,6 +35,7 @@ export function systemPrompt(shop: Shop, items: Item[]): string {
     `Payment: ${shop.payment}`,
     `A line starting "${VOICE_MARK}" is what the customer said in a voice note; answer it as their words.`,
     `A line starting "${PHOTO_MARK}" is what the customer's photo showed, followed by the catalogue items that match it; say whether we have it and name the match. If nothing matches, say so and offer the nearest item.`,
+    `A line "${PHOTO_MARK} Same item as our …" means the customer's photo shows that very item: name it.`,
     '',
     'CATALOGUE',
     catalogueLines(items),
@@ -60,6 +65,16 @@ export async function answer(turn: Turn, ctx: { shop: Shop; items: Item[]; memor
     shown = photoFact(m);
     matches = searchCatalogue(ctx.items, [m.description.category, ...m.description.keywords].join(' ')).map((s) => s.item);
     said.push(`${PHOTO_MARK} ${shown}`);
+    // the pictures, side by side: the piece that is the same one comes first, whatever the words found
+    let same: Item[] = [];
+    if (ctx.deps.compare) {
+      try { const c = await ctx.deps.compare(turn.imageUrl, ctx.items); same = ctx.items.filter((i) => c.same.includes(i.id)); }
+      catch { /* the words still searched */ }
+    }
+    if (same.length) {
+      said.push(`${PHOTO_MARK} Same item as our ${same.map((i) => `${i.name} (${i.price} ${i.currency})`).join('; or our ')}.`);
+      matches = [...same, ...matches.filter((i) => !same.includes(i))];
+    }
     said.push(matches.length
       ? `Catalogue items that match the photo: ${matches.map((i) => `${i.name} (${i.price} ${i.currency})`).join('; ')}`
       : 'No catalogue item matches the photo.');
@@ -73,6 +88,18 @@ export async function answer(turn: Turn, ctx: { shop: Shop; items: Item[]; memor
   // a ruby ring photo scored "Solitaire Diamond Ring" first while the reply rightly said "Ruby Dome Ring".
   const named = matches.find((i) => text.toLowerCase().includes(i.name.toLowerCase()));
   return { text, imageUrl: named?.imageUrl ?? null, heard, shown, matches };
+}
+
+const kept = new Map<string, Promise<string>>();
+/** A product's photo as bytes, fetched once per run (some hosts refuse a request without a User-Agent). */
+function productPicture(url: string): Promise<string> {
+  let p = kept.get(url);
+  if (!p) {
+    p = imageDataUri(url, { fetchFn: (u, init) => fetch(u, { ...init, headers: { 'User-Agent': 'oro-on-muse-demo/1.0 (https://github.com/thankywal/oro_muse)' } }) });
+    p.catch(() => kept.delete(url));
+    kept.set(url, p);
+  }
+  return p;
 }
 
 /** The real doors, all on the Meta Model API with one key. */
@@ -91,5 +118,10 @@ export function museDeps(metaKey: string): Deps {
     },
     // Messenger's photo is a Facebook CDN link, which Meta cannot fetch: SAM and Muse Spark are given its bytes.
     photo: async (url, phrases) => photoMatch(metaKey, endpoint, await imageDataUri(url), { phrases }),
+    // the shop's own photos, each fetched once, beside the customer's
+    compare: async (url, items) => {
+      const catalog = await Promise.all(items.map(async (i) => ({ id: i.id, picture: await productPicture(i.imageUrl) })));
+      return pictureMatch(endpoint, await imageDataUri(url), catalog);
+    },
   };
 }

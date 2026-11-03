@@ -107,6 +107,21 @@ describe('the assistant', () => {
     expect(r3.imageUrl).toBeNull(); expect(r3.matches).toHaveLength(3);
   });
 
+  it('the photo beside the shop\'s own photos: the piece Muse Spark says is the same one is named first, whatever the words found', async () => {
+    const d = deps('That is our Plain Silver Band, 48 USD.');
+    const compare = vi.fn(async (_u: string, _items: unknown[]) => ({ same: ['r1'] }));
+    const r = await answer({ senderId: 'c7', imageUrl: 'https://cdn/p.jpg' }, { shop, items, memory: new Memory(), deps: { ...d.deps, compare } });
+    expect(compare).toHaveBeenCalledWith('https://cdn/p.jpg', items);
+    expect(r.matches.map((i) => i.name)).toEqual(['Plain Silver Band', 'Ruby Dome Ring', 'Sapphire Halo Ring']);
+    expect(lastUser(d.messages[0]!)).toContain(`${PHOTO_MARK} Same item as our Plain Silver Band (48 USD).`);
+    expect(r.imageUrl).toBe(items.find((i) => i.name === 'Plain Silver Band')!.imageUrl);
+    // a comparison that fails leaves the words' search as it was
+    const failed = deps('That is our Ruby Dome Ring, 320 USD.');
+    const r2 = await answer({ senderId: 'c8', imageUrl: 'https://cdn/p.jpg' }, { shop, items, memory: new Memory(), deps: { ...failed.deps, compare: vi.fn(async () => { throw new Error('chat 503'); }) } });
+    expect(r2.matches.map((i) => i.name)).toEqual(['Ruby Dome Ring', 'Sapphire Halo Ring', 'Plain Silver Band']);
+    expect(lastUser(failed.messages[0]!)).not.toContain('Same item as our');
+  });
+
   it('an empty answer becomes the fallback; an empty turn is still answered', async () => {
     const d = deps('   ');
     const r = await answer({ senderId: 'c4' }, { shop, items, memory: new Memory(), deps: d.deps });
